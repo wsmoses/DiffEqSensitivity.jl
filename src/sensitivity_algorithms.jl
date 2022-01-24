@@ -69,10 +69,13 @@ struct BacksolveAdjoint{CS,AD,FDT,VJP,NOISE} <: AbstractAdjointSensitivityAlgori
 end
 Base.@pure function BacksolveAdjoint(;chunk_size=0,autodiff=true,
                                       diff_type=Val{:central},
-                                      autojacvec=autodiff,
+                                      autojacvec=nothing,
                                       checkpointing=true, noise=true,noisemixing=false)
   BacksolveAdjoint{chunk_size,autodiff,diff_type,typeof(autojacvec),typeof(noise)}(autojacvec,checkpointing,noise,noisemixing)
 end
+setvjp(sensealg::BacksolveAdjoint{CS,AD,FDT,Nothing,NOISE},vjp) where {CS,AD,FDT,NOISE} =
+        BacksolveAdjoint{CS,AD,FDT,typeof(vjp),NOISE}(vjp,sensealg.checkpointing,
+        sensealg.noise,sensealg.noisemixing)
 
 """
  Rackauckas, C. and Ma, Y. and Martensen, J. and Warner, C. and Zubov, K. and Supekar,
@@ -97,23 +100,28 @@ struct InterpolatingAdjoint{CS,AD,FDT,VJP,NOISE} <: AbstractAdjointSensitivityAl
 end
 Base.@pure function InterpolatingAdjoint(;chunk_size=0,autodiff=true,
                                          diff_type=Val{:central},
-                                         autojacvec=autodiff,
+                                         autojacvec=nothing,
                                          checkpointing=false, noise=true,noisemixing=false)
   InterpolatingAdjoint{chunk_size,autodiff,diff_type,typeof(autojacvec),typeof(noise)}(autojacvec,checkpointing,noise,noisemixing)
 end
+setvjp(sensealg::InterpolatingAdjoint{CS,AD,FDT,Nothing,NOISE},vjp) where {CS,AD,FDT,NOISE} =
+        InterpolatingAdjoint{CS,AD,FDT,typeof(vjp),NOISE}(vjp,sensealg.checkpointing,
+        sensealg.noise,sensealg.noisemixing)
 
 struct QuadratureAdjoint{CS,AD,FDT,VJP} <: AbstractAdjointSensitivityAlgorithm{CS,AD,FDT}
   autojacvec::VJP
   abstol::Float64
   reltol::Float64
-  compile::Bool
 end
 Base.@pure function QuadratureAdjoint(;chunk_size=0,autodiff=true,
                                          diff_type=Val{:central},
-                                         autojacvec=autodiff,abstol=1e-6,
+                                         autojacvec=nothing,abstol=1e-6,
                                          reltol=1e-3,compile=false)
   QuadratureAdjoint{chunk_size,autodiff,diff_type,typeof(autojacvec)}(autojacvec,abstol,reltol,compile)
 end
+setvjp(sensealg::QuadratureAdjoint{CS,AD,FDT,Nothing},vjp) where {CS,AD,FDT} =
+        QuadratureAdjoint{CS,AD,FDT,typeof(vjp)}(vjp,sensealg.abstol,
+        sensealg.reltol)
 
 struct TrackerAdjoint <: AbstractAdjointSensitivityAlgorithm{nothing,true,nothing} end
 struct ReverseDiffAdjoint <: AbstractAdjointSensitivityAlgorithm{nothing,true,nothing} end
@@ -170,8 +178,8 @@ Base.@pure function NILSS(nseg, nstep; rng = Xorshifts.Xoroshiro128Plus(rand(UIn
 end
 
 """
-Ni, A., and Talnikar, C., Adjoint sensitivity analysis on chaotic dynamical systems 
-by Non-Intrusive Least Squares Adjoint Shadowing (NILSAS). Journal of Computational 
+Ni, A., and Talnikar, C., Adjoint sensitivity analysis on chaotic dynamical systems
+by Non-Intrusive Least Squares Adjoint Shadowing (NILSAS). Journal of Computational
 Physics 395, 690-709 (2019).
 """
 struct NILSAS{CS,AD,FDT,RNG,SENSE} <: AbstractAdjointSensitivityAlgorithm{CS,AD,FDT}
@@ -191,7 +199,7 @@ Base.@pure function NILSAS(nseg, nstep, M=nothing; rng = Xorshifts.Xoroshiro128P
   # integer dimension of the unstable subspace
   M === nothing && error("Please provide an `M` with `M >= nus + 1`, where nus is the number of unstable covariant Lyapunov vectors.")
 
-  NILSAS{chunk_size,autodiff,diff_type,typeof(rng),typeof(adjoint_sensealg)}(rng, adjoint_sensealg, M, 
+  NILSAS{chunk_size,autodiff,diff_type,typeof(rng),typeof(adjoint_sensealg)}(rng, adjoint_sensealg, M,
     nseg, nstep, autojacvec)
 end
 
@@ -250,7 +258,6 @@ end
 @inline compile_tape(vjp::ReverseDiffVJP{compile}) where compile = compile
 @inline compile_tape(noise::ReverseDiffNoise{compile}) where compile = compile
 @inline compile_tape(autojacvec::Bool) = false
-@inline compile_tape(sensealg::QuadratureAdjoint) = sensealg.compile
 
 struct ForwardDiffOverAdjoint{A} <: AbstractSecondOrderSensitivityAlgorithm{nothing,true,nothing}
   adjalg::A
